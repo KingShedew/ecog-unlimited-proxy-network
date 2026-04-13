@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECOG Unlimited</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{
+--bg:#1e1f22;--panel:#2a2b2f;--panel2:#323338;--border:#3f4147;--text:#e4e6eb;--accent:#4c8bf5
+}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif;overflow:hidden}
+.tab{height:32px;padding:0 10px;display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;background:var(--panel);cursor:pointer}
+.tab.active{background:var(--bg)}
+.groupDot{width:8px;height:8px;border-radius:50%}
+.btn{padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--panel)}
+input{border:1px solid var(--border);border-radius:20px;padding:6px 12px;background:var(--panel2);color:white}
+iframe{width:100%;height:100%;border:none;background:#fff}
+.sidebar{width:220px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sidebar button{padding:10px;text-align:left;border-bottom:1px solid var(--border)}
+.panel{flex:1;overflow:auto;padding:10px}
+.item{padding:6px;border-bottom:1px solid var(--border);cursor:pointer}
+.item:hover{background:var(--panel2)}
+.brand{padding:12px;text-align:center;color:var(--accent);font-weight:bold}
+.bookmarksBar{display:flex;gap:6px;padding:6px;background:var(--panel);border-bottom:1px solid var(--border);overflow-x:auto}
+.bookmarkItem{padding:4px 8px;background:var(--panel2);border-radius:6px;cursor:pointer}
+
+/* SETTINGS MODAL */
+.overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center}
+.modal{background:var(--panel);padding:20px;border-radius:12px;width:320px;border:1px solid var(--border)}
+.themeOption{padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer}
+.themeOption:hover{background:var(--panel2)}
+</style>
+</head>
+<body>
+<div class="flex h-screen">
+
+<div class="sidebar">
+<button onclick="showPanel('tabs')">Tabs</button>
+<button onclick="showPanel('history')">History</button>
+<button onclick="showPanel('bookmarks')">Bookmarks</button>
+<button onclick="openSettings()">Settings</button>
+<div id="sideContent" class="panel"></div>
+<div class="brand">ECOG Unlimited</div>
+</div>
+
+<div class="flex flex-col flex-1">
+<div id="tabs" class="flex items-end gap-1 px-2 pt-2"></div>
+
+<div class="flex items-center gap-2 px-3 py-2" style="background:var(--panel);border-bottom:1px solid var(--border)">
+<button class="btn" onclick="back()">◀</button>
+<button class="btn" onclick="forward()">▶</button>
+<button class="btn" onclick="refresh()">⟳</button>
+<input id="url" class="flex-1" placeholder="Search or enter URL">
+<button class="btn" onclick="go()">Go</button>
+<button class="btn" onclick="addBookmark()">★</button>
+</div>
+
+<div id="bookmarkBar" class="bookmarksBar"></div>
+<div class="flex-1"><iframe id="frame"></iframe></div>
+</div>
+</div>
+
+<!-- SETTINGS -->
+<div id="overlay" class="overlay">
+<div class="modal">
+<h2 class="mb-3 text-lg">Settings</h2>
+<div>
+<div class="themeOption" onclick="setTheme('dark')">Dark Theme</div>
+<div class="themeOption" onclick="setTheme('light')">Light Theme</div>
+<div class="themeOption" onclick="setTheme('turquoise')">Turquoise Theme</div>
+</div>
+<br>
+<button class="btn" onclick="closeSettings()">Close</button>
+</div>
+</div>
+
+<script>
+let tabs=JSON.parse(localStorage.getItem('tabs')||'[]');
+let active=0;
+let bookmarks=JSON.parse(localStorage.getItem('bm')||'[]');
+let historyGlobal=JSON.parse(localStorage.getItem('hist')||'[]');
+
+function save(){
+localStorage.setItem('tabs',JSON.stringify(tabs));
+localStorage.setItem('bm',JSON.stringify(bookmarks));
+localStorage.setItem('hist',JSON.stringify(historyGlobal));
+}
+
+function setTheme(t){
+if(t==='dark'){
+document.documentElement.style.cssText='--bg:#1e1f22;--panel:#2a2b2f;--panel2:#323338;--border:#3f4147;--text:#e4e6eb;--accent:#4c8bf5';
+}
+if(t==='light'){
+document.documentElement.style.cssText='--bg:#f1f3f4;--panel:#ffffff;--panel2:#e8eaed;--border:#dadce0;--text:#202124;--accent:#1a73e8';
+}
+if(t==='turquoise'){
+document.documentElement.style.cssText='--bg:#0f1f1f;--panel:#163333;--panel2:#1f4d4d;--border:#2e6666;--text:#d9ffff;--accent:#00c2a8';
+}
+localStorage.setItem('theme',t);
+}
+
+function loadTheme(){
+let t=localStorage.getItem('theme')||'dark';
+setTheme(t);
+}
+
+function openSettings(){document.getElementById('overlay').style.display='flex'}
+function closeSettings(){document.getElementById('overlay').style.display='none'}
+
+function normalize(u){
+if(!u)return"https://www.google.com/?igu=1";
+if(!u.startsWith("http")){
+if(u.includes("."))return"https://"+u;
+return"https://www.google.com/search?q="+encodeURIComponent(u)+"&igu=1";
+}
+return u;
+}
+
+function renderTabs(){
+let t=document.getElementById('tabs');t.innerHTML='';
+tabs.forEach((tab,i)=>{
+let el=document.createElement('div');
+el.className='tab'+(i===active?' active':'');
+el.innerHTML=`<div class='groupDot' style='background:${tab.group||'transparent'}'></div>${tab.title}<button onclick='event.stopPropagation();closeTab(${i})'>✕</button>`;
+el.onclick=()=>{active=i;load()};
+el.ondblclick=()=>{tab.group=prompt('Enter group color');load()};
+t.appendChild(el);
+});
+let add=document.createElement('div');add.className='tab';add.innerText='+';add.onclick=newTab;t.appendChild(add);
+}
+
+function renderBookmarks(){
+let bar=document.getElementById('bookmarkBar');bar.innerHTML='';
+bookmarks.forEach(b=>{
+let el=document.createElement('div');el.className='bookmarkItem';el.innerText=b.title;
+el.onclick=()=>{tabs[active].history.push(b.url);tabs[active].i++;load()};
+bar.appendChild(el);
+});
+}
+
+function load(){
+if(!tabs.length)newTab();
+let tab=tabs[active];
+let url=tab.history[tab.i];
+document.getElementById('frame').src=url;
+document.getElementById('url').value=url;
+tab.title=new URL(url).hostname;
+renderTabs();renderBookmarks();save();
+}
+
+function newTab(){tabs.push({history:["https://www.google.com/?igu=1"],i:0,title:"New Tab"});active=tabs.length-1;load();}
+
+function go(){
+let u=normalize(document.getElementById('url').value);
+let tab=tabs[active];
+if(tab.i<tab.history.length-1)tab.history=tab.history.slice(0,tab.i+1);
+tab.history.push(u);tab.i++;
+historyGlobal.unshift(u);
+load();
+}
+
+document.getElementById('url').addEventListener('keypress',e=>{if(e.key==='Enter')go()});
+
+function back(){let t=tabs[active];if(t.i>0){t.i--;load()}}
+function forward(){let t=tabs[active];if(t.i<t.history.length-1){t.i++;load()}}
+function refresh(){load()}
+
+function closeTab(i){tabs.splice(i,1);if(active>=tabs.length)active=tabs.length-1;load()}
+
+function addBookmark(){let t=tabs[active];bookmarks.unshift({url:t.history[t.i],title:t.title});load()}
+
+function showPanel(type){
+let el=document.getElementById('sideContent');el.innerHTML='';
+if(type==='history'){historyGlobal.forEach(h=>{let d=document.createElement('div');d.className='item';d.innerText=h;d.onclick=()=>{tabs[active].history.push(h);tabs[active].i++;load()};el.appendChild(d)})}
+if(type==='bookmarks'){bookmarks.forEach(b=>{let d=document.createElement('div');d.className='item';d.innerText=b.title;d.onclick=()=>{tabs[active].history.push(b.url);tabs[active].i++;load()};el.appendChild(d)})}
+if(type==='tabs'){tabs.forEach((t,i)=>{let d=document.createElement('div');d.className='item';d.innerText=t.title;d.onclick=()=>{active=i;load()};el.appendChild(d)})}
+}
+
+loadTheme();
+if(!tabs.length)newTab(); else load();
+</script>
+</body>
+</html>
